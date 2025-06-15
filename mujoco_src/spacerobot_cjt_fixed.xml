@@ -1,0 +1,55 @@
+<mujoco model="ur10e">
+  <compiler angle="radian"/>
+  <option cone="elliptic" gravity="0 0 0" impratio="1" timestep="0.01" tolerance="1e-10" />
+
+  <include file="arm/assets.xml" />
+
+  <worldbody>
+    <body name="base_box" pos="0 0 0">
+      <freejoint name='base_freejoint'/>
+      <inertial pos="0 0 0" mass="104" diaginertia="16.676106 16.676106 16.67125"/>
+      <geom size="0.5 0.5 0.5" type="box" contype="2" conaffinity="1" group="1" rgba="0.7 0.7 0.7 1"/>
+      <body name="arm_base" pos="0 0 0.5">
+        <geom name="arm_base_geom" type="box" mass="0" size="0.1 0.1 0.04" pos="0 0 0"/>
+        <include file="arm/arm1.xml" />
+      </body>
+    </body>
+    <body name="anchor" pos="1.0 1.0 1.0">
+      <site name="anchor_site" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
+    </body>
+  </worldbody>
+
+  <equality>
+    <weld site1="anchor_site" site2="end_effector"/>
+  </equality>
+
+  <actuator>
+    <general ctrllimited="true" ctrlrange="-330 330" forcelimited="true" forcerange="-330 330" joint="shoulder_pan_joint" name="shoulder_pan_T"/>
+    <general ctrllimited="true" ctrlrange="-330 330" forcelimited="true" forcerange="-330 330" joint="shoulder_lift_joint" name="shoulder_lift_T"/>
+    <general ctrllimited="true" ctrlrange="-150 150" forcelimited="true" forcerange="-150 150" joint="elbow_joint" name="elbow_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_1_joint" name="wrist_1_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_2_joint" name="wrist_2_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_3_joint" name="wrist_3_T"/>
+  </actuator>
+
+  <sensor>
+    <jointpos joint="shoulder_pan_joint" name="shoulder_pan_pos"/>
+    <jointpos joint="shoulder_lift_joint" name="shoulder_lift_pos"/>
+    <jointpos joint="elbow_joint" name="elbow_pos"/>
+    <jointpos joint="wrist_1_joint" name="wrist_1_pos"/>
+    <jointpos joint="wrist_2_joint" name="wrist_2_pos"/>
+    <jointpos joint="wrist_3_joint" name="wrist_3_pos"/>
+    
+    <jointvel joint="shoulder_pan_joint" name="shoulder_pan_vel"/>
+    <jointvel joint="shoulder_lift_joint" name="shoulder_lift_vel"/>
+    <jointvel joint="elbow_joint" name="elbow_vel"/>
+    <jointvel joint="wrist_1_joint" name="wrist_1_vel"/>
+    <jointvel joint="wrist_2_joint" name="wrist_2_vel"/>
+    <jointvel joint="wrist_3_joint" name="wrist_3_vel"/>
+  </sensor>
+
+  <keyframe>
+    <key name="initial_pose" qpos="0.55258695 0.23122673 1.65074419 0.12838892 0.80946158 0.40329026 0.40699533 -34.2 0.16737155 -1.80304661 -8.534124 8.20929631 -2.03858489"/> 
+  </keyframe>
+
+</mujoco>

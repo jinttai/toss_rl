@@ -1,0 +1,74 @@
+<mujoco model="two_arm_space_robot_updated_inertia_symmetric">
+  <compiler angle="radian" inertiafromgeom="false" texturedir="textures/" meshdir="meshes/"/>
+  <option cone="elliptic" gravity="0 0 0" impratio="5" timestep="0.001" tolerance="1e-10" />
+  <default>
+    <geom density="0" contype="1" conaffinity="0"/>
+    <joint type="hinge" axis="0 0 1" limited="true" range="-180 180" damping="0.1"/>
+  </default>
+
+  <asset>
+    </asset>
+
+  <worldbody>
+    <body name="base" pos="0 0 0">
+      <geom name="base_geom" type="box" size="0.3 0.3 0.3" rgba="0.5 0.5 0.55 1"/>
+      <inertial pos="0 0 0" mass="44.0" diaginertia="44.0 44.0 44.0"/>
+
+      <body name="arm1_link1" pos="0 0.3 0">
+        <joint name="arm1_joint1" pos="0 0 0"/>
+        <geom name="arm1_j1_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="0.7 0.7 0.2 1"/>
+        <geom name="arm1_l1_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="0.2 0.7 0.2 1"/>
+        <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+        <body name="arm1_link2" pos="0.2 0 0">
+          <joint name="arm1_joint2" pos="0 0 0"/>
+          <geom name="arm1_j2_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="0.7 0.7 0.2 1"/>
+          <geom name="arm1_l2_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="0.2 0.7 0.2 1"/>
+          <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+          <body name="arm1_link3" pos="0.2 0 0">
+            <joint name="arm1_joint3" pos="0 0 0"/>
+            <geom name="arm1_j3_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="0.7 0.7 0.2 1"/>
+            <geom name="arm1_l3_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="0.2 0.7 0.2 1"/>
+            <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+            <body name="arm1_ee" pos="0.2 0 0">
+              <geom type="sphere" size="0.035" rgba="0.8 0.3 0.3 1"/>
+              <site name="end_effector" pos="0 0 0" size="0.01" rgba="0 1 0 1"/>
+              <inertial pos="0 0 0" mass="0.1" diaginertia="0.00001 0.00001 0.00001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <body name="arm2_link1" pos="0 -0.3 0">
+        <joint name="arm2_joint1" pos="0 0 0"/>
+        <geom name="arm2_j1_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="1.0 0.6 0.0 1"/> <geom name="arm2_l1_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="1.0 0.6 0.0 1"/> <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+        <body name="arm2_link2" pos="0.2 0 0">
+          <joint name="arm2_joint2" pos="0 0 0"/>
+          <geom name="arm2_j2_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="1.0 0.6 0.0 1"/> <geom name="arm2_l2_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="1.0 0.6 0.0 1"/> <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+          <body name="arm2_link3" pos="0.2 0 0">
+            <joint name="arm2_joint3" pos="0 0 0"/>
+            <geom name="arm2_j3_housing" type="cylinder" size="0.04 0.03" pos="0 0 0" rgba="1.0 0.6 0.0 1"/> <geom name="arm2_l3_geom" type="cylinder" fromto="0 0 0 0.2 0 0" size="0.03" rgba="1.0 0.6 0.0 1"/> <inertial pos="0.1 0 0" mass="2.49" diaginertia="0.21 0.21 0.21"/>
+
+            <body name="arm2_ee" pos="0.2 0 0">
+              <geom type="sphere" size="0.035" rgba="1.0 0.6 0.0 1"/> <inertial pos="0 0 0" mass="0.1" diaginertia="0.00001 0.00001 0.00001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor joint="arm1_joint1" name="m1j1" ctrllimited="true" ctrlrange="-100 100"/>
+    <motor joint="arm1_joint2" name="m1j2" ctrllimited="true" ctrlrange="-100 100"/>
+    <motor joint="arm1_joint3" name="m1j3" ctrllimited="true" ctrlrange="-80 80"/>
+    <motor joint="arm2_joint1" name="m2j1" ctrllimited="true" ctrlrange="-100 100"/>
+    <motor joint="arm2_joint2" name="m2j2" ctrllimited="true" ctrlrange="-100 100"/>
+    <motor joint="arm2_joint3" name="m2j3" ctrllimited="true" ctrlrange="-80 80"/>
+  </actuator>
+
+</mujoco>

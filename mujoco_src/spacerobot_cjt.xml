@@ -1,0 +1,92 @@
+<mujoco model="ur10e">
+  <compiler angle="radian"/>
+  <option cone="elliptic" gravity="0 0 0" impratio="5" timestep="0.01" tolerance="1e-10" />
+
+  <asset>
+    <mesh name="base" file="meshes/ur10e/collision/base.stl"/>
+    <mesh name="shoulder" file="meshes/ur10e/collision/shoulder.stl"/>
+    <mesh name="upperarm" file="meshes/ur10e/collision/upperarm.stl"/>
+    <mesh name="forearm" file="meshes/ur10e/collision/forearm.stl"/>
+    <mesh name="wrist1" file="meshes/ur10e/collision/wrist1.stl"/>
+    <mesh name="wrist2" file="meshes/ur10e/collision/wrist2.stl"/>
+    <mesh name="wrist3" file="meshes/ur10e/collision/wrist3.stl"/>
+  </asset>
+
+  <worldbody>
+    <site name="target" pos="0.5 0.5 0.5" size="0.01" rgba="1 0 0 1"/>
+    <body name="base_link" pos="0 0 0">
+      <freejoint name='base_freejoint'/>
+      <inertial pos="0 0 0" mass="104" diaginertia="16.676106 16.676106 16.67125"/>
+      <geom size="0.5 0.5 0.5" type="box" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1"/>
+      <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="base"/>
+      <body name="shoulder_link" pos="0 0 0.581">
+        <inertial pos="0 0 0" mass="7.778" diaginertia="0.0315 0.0315 0.02188"/>
+        <joint name="shoulder_pan_joint" pos="0 0 0" axis="0 0 1" range="-6.28318 6.28318"/>
+        <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="shoulder"/>
+        <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="shoulder"/>
+        <body name="upper_arm_link" pos="0 0.176 0" quat="0.707105 0 0.707108 0">
+          <inertial pos="0 0 0.3065" mass="12.93" diaginertia="0.42307 0.42307 0.0364"/>
+          <joint name="shoulder_lift_joint" pos="0 0 0" axis="0 1 0" range="-6.28318 6.28318"/>
+          <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="upperarm"/>
+          <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="upperarm"/>
+          <body name="forearm_link" pos="0 -0.137 0.613">
+            <inertial pos="0 0 0.2855" mass="3.87" diaginertia="0.11059 0.11059 0.01088"/>
+            <joint name="elbow_joint" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
+            <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="forearm"/>
+            <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="forearm"/>
+            <body name="wrist_1_link" pos="0 0 0.571" quat="0.707105 0 0.707108 0">
+              <inertial pos="0 0.135 0" quat="0.5 0.5 -0.5 0.5" mass="1.96" diaginertia="0.0055125 0.005108 0.005108"/>
+              <joint name="wrist_1_joint" pos="0 0 0" axis="0 1 0" range="-6.28318 6.28318"/>
+              <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="wrist1"/>
+              <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="wrist1"/>
+              <body name="wrist_2_link" pos="0 0.135 0">
+                <inertial pos="0 0 0.12" quat="0.5 0.5 -0.5 0.5" mass="1.96" diaginertia="0.0055125 0.005108 0.005108"/>
+                <joint name="wrist_2_joint" pos="0 0 0" axis="0 0 1" range="-6.28318 6.28318"/>
+                <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="wrist2"/>
+                <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="wrist2"/>
+                <body name="wrist_3_link" pos="0 0 0.12">
+                  <inertial pos="0 0.092 0" quat="0.5 0.5 -0.5 0.5" mass="0.202" diaginertia="0.000205 0.000144 0.000144"/>
+                  <joint name="wrist_3_joint" pos="0 0 0" axis="0 1 0" range="-6.28318 6.28318"/>
+                  <geom type="mesh" contype="2" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="wrist3"/>
+                  <geom type="mesh" contype="0" conaffinity="0" rgba="0.7 0.7 0.7 1" mesh="wrist3"/>
+                  <body name="ee_stick" pos="0 0.092 0" euler="-1.57 0 0">
+                    <geom name="ee_stick_geom" type="cylinder" contype="2" conaffinity="1" size="0.005 0.088 " density ='0' rgba="0.3 0.3 0.9 1"/>
+                    <site name="end_effector" pos="0 0 0.088" size="0.01" rgba="0 1 0 1"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- 각 관절을 제어하기 위한 actuator -->
+    <general ctrllimited="true" ctrlrange="-330 330" forcelimited="true" forcerange="-330 330" joint="shoulder_pan_joint" name="shoulder_pan_T"/>
+    <general ctrllimited="true" ctrlrange="-330 330" forcelimited="true" forcerange="-330 330" joint="shoulder_lift_joint" name="shoulder_lift_T"/>
+    <general ctrllimited="true" ctrlrange="-150 150" forcelimited="true" forcerange="-150 150" joint="elbow_joint" name="elbow_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_1_joint" name="wrist_1_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_2_joint" name="wrist_2_T"/>
+    <general ctrllimited="true" ctrlrange="-54 54" forcelimited="true" forcerange="-54 54" joint="wrist_3_joint" name="wrist_3_T"/>
+  </actuator>
+  <sensor>
+    <!-- 각 관절의 위치(각도)를 측정 -->
+    <jointpos joint="shoulder_pan_joint" name="shoulder_pan_pos"/>
+    <jointpos joint="shoulder_lift_joint" name="shoulder_lift_pos"/>
+    <jointpos joint="elbow_joint" name="elbow_pos"/>
+    <jointpos joint="wrist_1_joint" name="wrist_1_pos"/>
+    <jointpos joint="wrist_2_joint" name="wrist_2_pos"/>
+    <jointpos joint="wrist_3_joint" name="wrist_3_pos"/>
+    
+    <!-- 각 관절의 속도(angular velocity)를 측정 -->
+    <jointvel joint="shoulder_pan_joint" name="shoulder_pan_vel"/>
+    <jointvel joint="shoulder_lift_joint" name="shoulder_lift_vel"/>
+    <jointvel joint="elbow_joint" name="elbow_vel"/>
+    <jointvel joint="wrist_1_joint" name="wrist_1_vel"/>
+    <jointvel joint="wrist_2_joint" name="wrist_2_vel"/>
+    <jointvel joint="wrist_3_joint" name="wrist_3_vel"/>
+  </sensor>
+
+</mujoco>

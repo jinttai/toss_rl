@@ -1,0 +1,11 @@
+<mujoco>
+  <asset>
+    <mesh name="base" file="arm/meshes/ur10e/collision/base.stl"/>
+    <mesh name="shoulder" file="arm/meshes/ur10e/collision/shoulder.stl"/>
+    <mesh name="upperarm" file="arm/meshes/ur10e/collision/upperarm.stl"/>
+    <mesh name="forearm" file="arm/meshes/ur10e/collision/forearm.stl"/>
+    <mesh name="wrist1" file="arm/meshes/ur10e/collision/wrist1.stl"/>
+    <mesh name="wrist2" file="arm/meshes/ur10e/collision/wrist2.stl"/>
+    <mesh name="wrist3" file="arm/meshes/ur10e/collision/wrist3.stl"/>
+  </asset>
+</mujoco>

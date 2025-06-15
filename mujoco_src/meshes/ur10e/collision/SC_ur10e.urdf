@@ -1,0 +1,259 @@
+<?xml version="1.0"?>
+<robot name="ur10e">
+  <mujoco> <compiler discardvisual="false"/> </mujoco>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="1 1 1"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+    <visual>
+      <geometry>
+        <origin xyz="0 0 0.5" rpy="0 0 0"/>
+        <mesh filename="/meshes/ur10e/collision/base.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="1 1 1"/>
+      </geometry>
+    </collision>
+    <collision>
+      <geometry>
+        <origin xyz="0 0 0.5" rpy="0 0 0"/>
+        <mesh filename="/meshes/ur10e/collision/base.stl"/>
+      </geometry>
+    </collision>
+
+
+    <inertial>
+      <mass value="104.0"/>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <inertia
+        ixx="16.676106" ixy="0.0" ixz="0.0"
+        iyy="16.676106" iyz="0.0"
+        izz="16.67125" />
+    </inertial>
+  </link>
+
+  <joint name="shoulder_pan_joint" type="revolute">
+    <parent link="base_link"/>
+    <child  link="shoulder_link"/>
+    <origin xyz="0.0 0.0 0.581" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283185" upper="6.283185" effort="330.0" velocity="3.14"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <link name="shoulder_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/shoulder.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/shoulder.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="7.778"/>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <inertia
+        ixx="0.03150" ixy="0.0" ixz="0.0"
+        iyy="0.03150" iyz="0.0"
+        izz="0.02188" />
+    </inertial>
+  </link>
+
+  <joint name="shoulder_lift_joint" type="revolute">
+    <parent link="shoulder_link"/>
+    <child  link="upper_arm_link"/>
+    <origin xyz="0.0 0.176 0.0" rpy="0.0 1.5708 0.0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283185" upper="6.283185" effort="330.0" velocity="3.14"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <link name="upper_arm_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/upperarm.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/upperarm.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="12.93"/>
+      <origin xyz="0.0 0.0 0.3065" rpy="0 0 0"/>
+      <inertia
+        ixx="0.42307" ixy="0.0" ixz="0.0"
+        iyy="0.42307" iyz="0.0"
+        izz="0.03640" />
+    </inertial>
+  </link>
+
+  <joint name="elbow_joint" type="revolute">
+    <parent link="upper_arm_link"/>
+    <child  link="forearm_link"/>
+    <origin xyz="0.0 -0.137 0.613" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="150.0" velocity="3.14"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <link name="forearm_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/forearm.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/forearm.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="3.87"/>
+      <origin xyz="0.0 0.0 0.2855" rpy="0 0 0"/>
+      <inertia
+        ixx="0.11059" ixy="0.0" ixz="0.0"
+        iyy="0.11059" iyz="0.0"
+        izz="0.01088" />
+    </inertial>
+  </link>
+
+  <joint name="wrist_1_joint" type="revolute">
+    <parent link="forearm_link"/>
+    <child  link="wrist_1_link"/>
+    <origin xyz="0.0 0.0 0.571" rpy="0.0 1.5708 0.0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283185" upper="6.283185" effort="54.0" velocity="6.28"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+
+  <link name="wrist_1_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist1.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist1.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="1.96"/>
+      <origin xyz="0.0 0.135 0.0" rpy="0 0 0"/>
+      <inertia
+        ixx="0.005108" ixy="0.0" ixz="0.0"
+        iyy="0.005108" iyz="0.0"
+        izz="0.0055125" />
+    </inertial>
+  </link>
+
+  <joint name="wrist_2_joint" type="revolute">
+    <parent link="wrist_1_link"/>
+    <child  link="wrist_2_link"/>
+    <origin xyz="0.0 0.135 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283185" upper="6.283185" effort="54.0" velocity="6.28"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <link name="wrist_2_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist2.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist2.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="1.96"/>
+      <origin xyz="0.0 0.0 0.12" rpy="0 0 0"/>
+      <inertia
+        ixx="0.005108" ixy="0.0" ixz="0.0"
+        iyy="0.005108" iyz="0.0"
+        izz="0.0055125" />
+    </inertial>
+  </link>
+
+  <joint name="wrist_3_joint" type="revolute">
+    <parent link="wrist_2_link"/>
+    <child  link="wrist_3_link"/>
+    <origin xyz="0.0 0.0 0.12" rpy="0.0 0.0 0.0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283185" upper="6.283185" effort="54.0" velocity="6.28"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <link name="wrist_3_link">
+    <visual>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist3.stl"/>
+      </geometry>
+      <material name="LightGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="/meshes/ur10e/collision/wrist3.stl"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="0.202"/>
+      <origin xyz="0.0 0.092 0.0" rpy="1.5708 0 0"/>
+      <inertia
+        ixx="0.000144" ixy="0.0" ixz="0.0"
+        iyy="0.000144" iyz="0.0"
+        izz="0.000205" />
+    </inertial>
+  </link>
+
+
+
+</robot>
