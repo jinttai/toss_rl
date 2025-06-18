@@ -137,7 +137,7 @@ CFG = {
     "critic_net": {"hidden": [400, 300], "hidden_activation": "tanh", "output_activation": None},
 
     # -------- 저장 경로 --------
-    "save_dir": "rl_results/SelfTossing_V1_10_TD3"+ time.strftime("_%Y%m%d_%H%M%S", time.localtime()),
+    "save_dir": "rl_results/SelfTossing_V1_10_TD3"+ "_comp",
     "actor_save_path": "actor_td3_random_10.pth",
     "critic_save_path": "critic_td3_random_10.pth",
     "results_save_path": "training_results_td3_random.npz",
