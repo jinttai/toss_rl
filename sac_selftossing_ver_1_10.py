@@ -53,7 +53,7 @@ CFG = {
     # 버퍼·배치
     "batch_size":     256,
     "buffer_size":    500_000,
-    "episode_number": 20_000,
+    "episode_number": 30_000,
     "episode_length": 501,
     "start_random":   20_000,
 

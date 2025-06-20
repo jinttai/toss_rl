@@ -10,7 +10,7 @@
 import os, argparse, numpy as np, torch, matplotlib.pyplot as plt
 
 # 학습 스크립트(딥러닝·환경 정의)에서 클래스/설정 가져오기
-from ddpg_selftossing_ver_1_10 import SpaceRobotEnv, Normalizer, TD3Agent, CFG
+from ddpg_selftossing_ver_1_11 import SpaceRobotEnv, Normalizer, TD3Agent, CFG
 
 def plot_timeseries(mags, angs, ep_idx, out_dir):
     """‖v‖·angle-error 시계열 그래프 두 장 저장"""

@@ -1,16 +1,91 @@
+"""
+Self-Tossing Space Robot RL
+TD3 → SAC 전체 통합 버전 (Python ≥ 3.9, PyTorch ≥ 2.0)
+
+원본 TD3 코드 구조(셀 주석) 유지 + SACAgent, 하이퍼파라미터·학습 루프 교체
+기존 유틸리티·환경·리플레이·시각화 함수는 그대로 포함
+"""
+
+# ==============================================================================
+# Cell 0 : 공통 import, 설정(CFG)
+# ==============================================================================
+import os, time
 import numpy as np
+import torch
+import torch.nn as nn
+import gymnasium as gym
 import mujoco
-import mujoco.viewer
-import time
+from collections import deque
+import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = mujoco.MjModel.from_xml_path("mujoco_src/spacerobot_twoarm_3dof.xml")
-data = mujoco.MjData(model)
+def get_act_fn(name: str):
+    name = (name or "").lower()
+    return {"relu": nn.ReLU, "tanh": nn.Tanh, "elu": nn.ELU,
+            "leakyrelu": nn.LeakyReLU, None: None}.get(name, None)
 
-model_fixed = mujoco.MjModel.from_xml_path("mujoco_src/spacerobot_twoarm_3dof_base_fixed.xml")
-data_fixed = mujoco.MjData(model_fixed)
+CFG = {
+    # 모델
+    "model_path":         "mujoco_src/spacerobot_twoarm_3dof.xml",
+    "model_path_fixed":   "mujoco_src/spacerobot_twoarm_3dof_base_fixed.xml",
 
+    # PD 제어
+    "kp":    10.0 * np.array([0.3, 0.5, 0.8, 0.1, 0.05, 0.01]),
+    "kd":    0.0,
+    "max_vel": 0.5,
+
+    # 목표 속도(에피소드마다 각도만 랜덤)
+    "target_xy_com_vel_components": np.array([1, 1]),
+    "target_velocity_magnitude":    0.2,
+    "nsubstep": 10,
+
+    # SAC
+    "gamma": 0.99,
+    "tau":   0.005,
+    "actor_lr":  3e-4,
+    "critic_lr": 3e-4,
+    "alpha_lr":  3e-4,
+    "auto_alpha": True,
+    "target_entropy": None,
+
+    # 버퍼·배치
+    "batch_size":     256,
+    "buffer_size":    500_000,
+    "episode_number": 30_000,
+    "episode_length": 501,
+    "start_random":   20_000,
+
+    # 관측/목표 차원
+    "raw_observation_dimension": 16,
+    "goal_dimension": 2,
+
+    # 성공 판정
+    "angle_release_threshold_deg": 5.0,
+    "success_angle_threshold_deg": 5.0,
+    "velocity_threshold": 0.5,
+
+    # 네트워크 구조
+    "actor_net":  {"hidden": [400, 300], "hidden_activation": "tanh"},
+    "critic_net": {"hidden": [400, 300], "hidden_activation": "tanh"},
+
+    # 저장
+    "save_dir": "rl_results/SelfTossing_V1_10_SAC" +
+                time.strftime("_%Y%m%d_%H%M%S", time.localtime()),
+    "actor_save_path":      "actor_sac.pth",
+    "critic_save_path":     "critic_sac.pth",
+    "results_save_path":    "training_results_sac.npz",
+    "normalizer_save_path": "obs_normalizer_stats_sac.npz",
+
+    # Normalizer
+    "normalizer_gamma": 1.0,
+    "normalizer_beta":  0.0,
+}
+
+# ==============================================================================
+# Cell 1 : 유틸리티 함수
+# ==============================================================================
 def quaternion_conjugate(q):
     w, x, y, z = q
     return np.array([w, -x, -y, -z])
@@ -18,59 +93,372 @@ def quaternion_conjugate(q):
 def quaternion_multiply(q1, q2):
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
-    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
     return np.array([w, x, y, z])
 
 def get_relative_rotation_quaternion_manual(q_initial, q_target):
-    q_initial_inv = quaternion_conjugate(q_initial)
-    q_relative_transform = quaternion_multiply(q_initial_inv, q_target)
-    return q_relative_transform
+    return quaternion_multiply(quaternion_conjugate(q_initial), q_target)
+
+def normalize_vector(v):
+    n = np.linalg.norm(v)
+    return v / n if n >= 1e-6 else np.zeros_like(v)
 
 def jacobian_vel(model, data, body_id):
-    """ 특정 바디의 자코비안을 이용해 속도를 계산합니다. """
-    jacp = np.zeros((3, model.nv))
-    jacr = np.zeros((3, model.nv))
+    jacp = np.zeros((3, model.nv)); jacr = np.zeros((3, model.nv))
     mujoco.mj_jacBodyCom(model, data, jacp, jacr, body_id)
     return jacp @ data.qvel
 
-def _initialize_qpos( qpos_arm_joints):
-    """ 로봇팔의 초기 자세를 설정하고, 그에 맞게 베이스의 위치와 방향을 조정합니다. """
-    weld_quat, weld_pos = np.array([1, 0, 0, 0]), np.array([1.0, 1.0, 1.0])
-    
-    data_fixed.qpos[:] = qpos_arm_joints
-    data_fixed.qvel[:] = np.zeros_like(data_fixed.qvel)
-    mujoco.mj_forward(model_fixed, data_fixed)
+def wrap_angle(ang):  # [-π, π]
+    return (ang + np.pi) % (2*np.pi) - np.pi
 
-    site_id = mujoco.mj_name2id(model_fixed, mujoco.mjtObj.mjOBJ_SITE, "end_effector")
-    body_id = model_fixed.body("arm1_ee").id
-    site_xquat = data_fixed.xquat[body_id]
-    site_xpos = data_fixed.site_xpos[site_id]
+def huber(x, delta=0.5):
+    ax = np.abs(x); quad = 0.5 * x**2; lin = delta*(ax-0.5*delta)
+    return np.where(ax <= delta, quad, lin)
 
-    data.qpos[7:13] = qpos_arm_joints
-    quat_relative = get_relative_rotation_quaternion_manual(site_xquat, weld_quat)
-    data.qpos[3:7] = quaternion_multiply(quat_relative, data.qpos[3:7])
-    data.qpos[0:3] = weld_pos - _rotate_vector_by_quaternion(site_xpos, quat_relative)
-    data.qvel[:] = np.zeros_like(data.qvel)
+# ==============================================================================
+# Cell 2 : 관측 정규화 클래스
+# ==============================================================================
+class Normalizer:
+    def __init__(self, dim, clip_range=5.0, gamma=1.0, beta=0.0):
+        self.n = 0
+        self.mean = np.zeros(dim, np.float64)
+        self.M2   = np.zeros(dim, np.float64)
+        self.std  = np.ones(dim, np.float64)
+        self.clip_range, self.gamma, self.beta = clip_range, gamma, beta
 
-def _rotate_vector_by_quaternion(vector, quat_rotation_wxyz): 
-    # Scipy's Rotation expects quaternion as [x, y, z, w]
-    quat_xyzw = quat_rotation_wxyz[[1,2,3,0]] 
-    return R.from_quat(quat_xyzw).apply(vector)
+    def update(self, x):
+        x = np.asarray(x, np.float64)
+        self.n += 1
+        delta = x - self.mean
+        self.mean += delta / self.n
+        delta2 = x - self.mean
+        self.M2 += delta * delta2
+        if self.n > 1:
+            self.std = np.sqrt(self.M2 / (self.n - 1))
 
+    def normalize(self, t):
+        m = torch.as_tensor(self.mean, dtype=torch.float32, device=device)
+        s = torch.as_tensor(self.std,  dtype=torch.float32, device=device)
+        z = (t - m) / (s + 1e-8)
+        z = torch.clamp(z, -self.clip_range, self.clip_range)
+        return self.gamma * z + self.beta
 
-# Initialize the robot arm joints
-qpos_arm_joints = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # Adjust as needed
-_initialize_qpos(qpos_arm_joints)
+    def save_stats(self, path):
+        np.savez(path, n=self.n, mean=self.mean, M2=self.M2)
+        print(f"Normalizer 저장: {path}")
 
-with mujoco.viewer.launch_passive(model, data) as viewer:
-    while viewer.is_running():
-        mujoco.mj_step(model, data)
-        viewer.sync()
-        time.sleep(0.01)
-        for i in range(1, model.nbody-1):
-            print(f"Body {i}: {model.body(i).name}, mass: {model.body(i).mass}")
-            print(data.xipos[i])
-            print("Velocity:", jacobian_vel(model, data, i))
+    def load_stats(self, path):
+        if os.path.exists(path):
+            d = np.load(path)
+            self.n, self.mean, self.M2 = d['n'], d['mean'], d['M2']
+            if self.n > 1: self.std = np.sqrt(self.M2 / (self.n - 1))
+            print("Normalizer 로드 완료.")
+
+# ==============================================================================
+# Cell 3 : SpaceRobotEnv
+# ==============================================================================
+class SpaceRobotEnv(gym.Env):
+    def __init__(self, xml_path: str, cfg=CFG):
+        super().__init__()
+        self.cfg = cfg
+        self.model = mujoco.MjModel.from_xml_path(xml_path)
+        self.data  = mujoco.MjData(self.model)
+
+        self.model_fixed = mujoco.MjModel.from_xml_path(cfg['model_path_fixed'])
+        self.data_fixed  = mujoco.MjData(self.model_fixed)
+
+        hi = np.inf * np.ones(cfg["raw_observation_dimension"], np.float32)
+        self.observation_space = gym.spaces.Box(-hi, hi, dtype=np.float32)
+        self.action_space      = gym.spaces.Box(-1, 1, (6,), np.float32)
+
+        self.horizon = cfg["episode_length"]; self.step_cnt = 0
+        self.dt = self.model.opt.timestep
+        self.last_action = np.zeros(self.action_space.shape[0])
+
+        tc = cfg['target_xy_com_vel_components']
+        self.original_angle = np.arctan2(tc[1], tc[0])
+        self.current_goal = np.array([self.original_angle, cfg["target_velocity_magnitude"]])
+
+    # ---------- 내부 메서드 ----------
+    def _raw_obs(self):
+        qpos = self.data.qpos[7:13].copy(); qvel = self.data.qvel[6:12].copy()
+        _, com_vel = self._calculate_com()
+        ang = np.arctan2(com_vel[1], com_vel[0])
+        return np.concatenate(([self.step_cnt], qpos, qvel, com_vel[:2], [ang])).astype(np.float32)
+
+    def _apply_pd(self, des_vel):
+        cur_v = self.data.qvel[6:12].copy(); qacc = self.data.qacc[6:12].copy()
+        self.data.ctrl = self.cfg["kp"]*(des_vel-cur_v) - self.cfg["kd"]*qacc
+
+    def _initialize_qpos(self, q):
+        weld_q, weld_p = np.array([1,0,0,0]), np.array([1.0,1.0,1.0])
+        self.data_fixed.qpos[:] = q; self.data_fixed.qvel[:] = 0
+        mujoco.mj_forward(self.model_fixed, self.data_fixed)
+
+        site_id = mujoco.mj_name2id(self.model_fixed, mujoco.mjtObj.mjOBJ_SITE, "end_effector")
+        body_id = self.model_fixed.body("arm1_ee").id
+        ee_quat = self.data_fixed.xquat[body_id]; ee_pos = self.data_fixed.site_xpos[site_id]
+
+        self.data.qpos[7:13] = q
+        rel_q = get_relative_rotation_quaternion_manual(ee_quat, weld_q)
+        self.data.qpos[3:7] = quaternion_multiply(rel_q, self.data.qpos[3:7])
+        self.data.qpos[0:3] = weld_p - self._rot_vec(ee_pos, rel_q)
+        self.data.qvel[:] = 0
+
+    def _rot_vec(self, v, q_wxyz):
+        q_xyzw = q_wxyz[[1,2,3,0]]
+        return R.from_quat(q_xyzw).apply(v)
+
+    def _calculate_com(self):
+        pos = vel = np.zeros(3); m = 0
+        for i in range(1, self.model.nbody-1):
+            bm = self.model.body_mass[i]
+            if bm < 1e-6: continue
+            pos += bm * self.data.xipos[i]
+            vel += bm * jacobian_vel(self.model, self.data, i)
+            m += bm
+        if m > 1e-6:
+            pos /= m; vel /= m
+        return pos, vel
+
+    # ---------- Gym API ----------
+    def step(self, action):
+        des_vel = np.clip(action, -1, 1) * self.cfg["max_vel"]
+        self._apply_pd(des_vel)
+        _, com_vel = self._calculate_com()
+        for _ in range(self.cfg['nsubstep']):
+            mujoco.mj_step(self.model, self.data)
+        self.step_cnt += 1
+        obs_next = self._raw_obs()
+
+        rew = self._reward(self.step_cnt, com_vel, self.current_goal,
+                           action, self.last_action)
+        self.last_action = action.copy()
+        trunc = self.step_cnt >= self.horizon
+        ang_diff = np.rad2deg(abs(wrap_angle(self.current_goal[0] -
+                                             np.arctan2(com_vel[1], com_vel[0]))))
+        info = dict(com_vel_3d=com_vel.copy(),
+                    achieved_goal_angle=np.array([obs_next[-1]]),
+                    angle_diff_deg=ang_diff)
+        return obs_next, rew, False, trunc, info
+
+    def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed); self.step_cnt = 0
+        mujoco.mj_resetData(self.model, self.data)
+        rng = np.random.default_rng(seed)
+        q0 = rng.uniform(-np.pi/18, np.pi/18, 6)
+        self._initialize_qpos(q0); mujoco.mj_forward(self.model, self.data)
+        self.last_action = np.zeros(self.action_space.shape[0])
+        rand_ang = np.pi/4 + rng.uniform(-np.pi/18, np.pi/18)
+        self.current_goal = np.array([rand_ang, self.cfg["target_velocity_magnitude"]])
+        return self._raw_obs(), {"current_goal": self.current_goal.copy()}
+
+    def _reward(self, t, com_vel, goal, act, last_act):
+        d_ang, d_spd = goal
+        cur_ang = np.arctan2(com_vel[1], com_vel[0])
+        cur_spd = np.linalg.norm(com_vel[:2])
+        a_err = wrap_angle(d_ang - cur_ang)
+        s_err = (d_spd + 0.1 - cur_spd)*30
+        w = (t / self.horizon)**2
+        r_ang = -w*(a_err**2 + np.log10(1e-6+abs(a_err)))*0.1
+        r_spd = -w*(s_err**2 + np.log10(1e-6+abs(s_err)))*0.1
+        r_rate = -0.001 * np.mean((act-last_act)**2)
+        r = r_ang + r_spd + r_rate
+        if (t >= self.horizon-1 and abs(a_err) <=
+            self.cfg["angle_release_threshold_deg"]*np.pi/180 and
+            abs(cur_spd) >= self.cfg["target_velocity_magnitude"]):
+            r += 100
+        return r
+
+# ==============================================================================
+# Cell 4 : ReplayBuffer
+# ==============================================================================
+class ReplayBuffer:
+    def __init__(self, size, obs_dim, act_dim, goal_dim):
+        self.size, self.ptr, self.full = size, 0, False
+        self.ro   = np.zeros((size, obs_dim),  np.float32)
+        self.act  = np.zeros((size, act_dim),  np.float32)
+        self.rew  = np.zeros((size, 1),        np.float32)
+        self.rno  = np.zeros((size, obs_dim),  np.float32)
+        self.done = np.zeros((size, 1),        np.float32)
+        self.goal = np.zeros((size, goal_dim), np.float32)
+    def add(self, ro, a, r, rno, d, g):
+        self.ro[self.ptr], self.act[self.ptr], self.rew[self.ptr] = ro, a, r
+        self.rno[self.ptr], self.done[self.ptr], self.goal[self.ptr] = rno, d, g
+        self.ptr = (self.ptr+1) % self.size; self.full |= self.ptr == 0
+    def sample(self, bs):
+        idx = np.random.randint(0, self.size if self.full else self.ptr, size=bs)
+        to_t = lambda x: torch.as_tensor(x[idx]).to(device)
+        return to_t(self.ro), to_t(self.act), to_t(self.rew),\
+               to_t(self.rno), to_t(self.done), to_t(self.goal)
+
+# ==============================================================================
+# Cell 5 : SACAgent
+# ==============================================================================
+def build_mlp(in_dim, out_dim, cfg_net):
+    hidden = cfg_net["hidden"]; Act = get_act_fn(cfg_net["hidden_activation"])
+    layers, d = [], in_dim
+    for h in hidden:
+        layers += [nn.Linear(d,h), Act()]; d = h
+    layers.append(nn.Linear(d,out_dim))
+    return nn.Sequential(*layers)
+
+class GaussianPolicy(nn.Module):
+    def __init__(self, in_dim, act_dim, cfg_net):
+        super().__init__()
+        self.net = build_mlp(in_dim, 2*act_dim, cfg_net)
+        self.log_std_min, self.log_std_max = -20, 2
+        self.act_dim = act_dim
+    def forward(self, x):
+        mu_logstd = self.net(x)
+        mu, log_std = torch.chunk(mu_logstd, 2, dim=-1)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        std = log_std.exp()
+        eps = torch.randn_like(mu)
+        pre = mu + eps*std
+        a = torch.tanh(pre)
+        logp = (-0.5*((pre-mu)/std).pow(2) - log_std - 0.5*np.log(2*np.pi)).sum(-1, keepdim=True)
+        logp -= (2*(np.log(2) - pre - nn.functional.softplus(-2*pre))).sum(-1, keepdim=True)
+        return a, logp
+
+class SACAgent:
+    def __init__(self, obs_dim, act_dim, goal_dim, act_lim, norm, cfg=CFG):
+        self.cfg, self.act_dim, self.act_lim, self.norm = cfg, act_dim, act_lim, norm
+        actor_in  = obs_dim + goal_dim
+        critic_in = obs_dim + act_dim + goal_dim
+        self.actor = GaussianPolicy(actor_in, act_dim, cfg["actor_net"]).to(device)
+        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=cfg["actor_lr"])
+        def _critic(): return build_mlp(critic_in, 1, cfg["critic_net"]).to(device)
+        self.q1, self.q2, self.q1_t, self.q2_t = _critic(), _critic(), _critic(), _critic()
+        self.q1_t.load_state_dict(self.q1.state_dict()); self.q2_t.load_state_dict(self.q2.state_dict())
+        self.critic_opt = torch.optim.Adam(list(self.q1.parameters())+list(self.q2.parameters()),
+                                           lr=cfg["critic_lr"])
+        if cfg["auto_alpha"]:
+            self.log_alpha = torch.tensor(0.0, device=device, requires_grad=True)
+            self.alpha_opt = torch.optim.Adam([self.log_alpha], lr=cfg["alpha_lr"])
+            self.target_entropy = cfg["target_entropy"] or -act_dim
+        else:
+            self.log_alpha = torch.tensor(np.log(0.2), device=device, requires_grad=False)
+
+    @property
+    def alpha(self): return self.log_alpha.exp()
+
+    @torch.no_grad()
+    def act(self, ro, goal, deterministic=False):
+        r = torch.as_tensor(ro,    dtype=torch.float32, device=device).unsqueeze(0)
+        g = torch.as_tensor(goal,  dtype=torch.float32, device=device).unsqueeze(0)
+        z = self.norm.normalize(r); inp = torch.cat([z,g],1)
+        if deterministic:
+            mu = self.actor.net(inp)[:,:self.act_dim]
+            a = torch.tanh(mu)
+        else:
+            a,_ = self.actor(inp)
+        return a.squeeze(0).cpu().numpy()
+
+    def update(self, buf, bs):
+        if not buf.full and buf.ptr < bs: return 0,0,0
+        ro,a,r,rno,d,g = buf.sample(bs)
+        nro = self.norm.normalize(ro); nrno = self.norm.normalize(rno)
+
+        # 1) Critic
+        with torch.no_grad():
+            nxt_in = torch.cat([nrno, g],1)
+            na, nlogp = self.actor(nxt_in)
+            q1_t = self.q1_t(torch.cat([nrno, na, g],1))
+            q2_t = self.q2_t(torch.cat([nrno, na, g],1))
+            y = r + self.cfg["gamma"]*(1-d)*(torch.min(q1_t,q2_t) - self.alpha*nlogp)
+        q1 = self.q1(torch.cat([nro,a,g],1))
+        q2 = self.q2(torch.cat([nro,a,g],1))
+        c_loss = nn.functional.mse_loss(q1,y) + nn.functional.mse_loss(q2,y)
+        self.critic_opt.zero_grad(); c_loss.backward(); self.critic_opt.step()
+
+        # 2) Actor
+        in_cat = torch.cat([nro,g],1)
+        pi, logp = self.actor(in_cat)
+        q1_pi = self.q1(torch.cat([nro,pi,g],1))
+        q2_pi = self.q2(torch.cat([nro,pi,g],1))
+        a_loss = (self.alpha*logp - torch.min(q1_pi,q2_pi)).mean()
+        self.actor_opt.zero_grad(); a_loss.backward(); self.actor_opt.step()
+
+        # 3) Alpha
+        if self.cfg["auto_alpha"]:
+            al_loss = -(self.log_alpha * (logp + self.target_entropy).detach()).mean()
+            self.alpha_opt.zero_grad(); al_loss.backward(); self.alpha_opt.step()
+        else: al_loss = torch.tensor(0.0)
+
+        # 4) Target soft update
+        for net, tnet in ((self.q1,self.q1_t),(self.q2,self.q2_t)):
+            for p,tp in zip(net.parameters(), tnet.parameters()):
+                tp.data.mul_(1-self.cfg["tau"]).add_(self.cfg["tau"]*p.data)
+        return c_loss.item()/2, a_loss.item(), al_loss.item()
+
+    # 저장/로드
+    def save(self, d):
+        torch.save(self.actor.state_dict(), os.path.join(d, CFG["actor_save_path"]))
+        torch.save({'q1':self.q1.state_dict(),'q2':self.q2.state_dict()},
+                   os.path.join(d, CFG["critic_save_path"]))
+        if self.cfg["auto_alpha"]:
+            torch.save({'log_alpha':self.log_alpha.detach()}, os.path.join(d,"alpha.pth"))
+    def load(self, d):
+        ap, cp = os.path.join(d, CFG["actor_save_path"]), os.path.join(d, CFG["critic_save_path"])
+        if os.path.exists(ap) and os.path.exists(cp):
+            self.actor.load_state_dict(torch.load(ap, map_location=device))
+            c = torch.load(cp, map_location=device)
+            self.q1.load_state_dict(c['q1']); self.q2.load_state_dict(c['q2'])
+            self.q1_t.load_state_dict(self.q1.state_dict()); self.q2_t.load_state_dict(self.q2.state_dict())
+            if self.cfg["auto_alpha"]:
+                apath = os.path.join(d,"alpha.pth")
+                if os.path.exists(apath): self.log_alpha.data = torch.load(apath)['log_alpha']
+
+# ==============================================================================
+# Cell 6 : 학습 루프
+# ==============================================================================
+def main():
+    print(f"device: {device}")
+    env = SpaceRobotEnv(CFG["model_path"], cfg=CFG)
+    obs_dim = env.observation_space.shape[0]
+    act_dim = env.action_space.shape[0]
+    goal_dim = CFG["goal_dimension"]
+
+    os.makedirs(CFG["save_dir"], exist_ok=True)
+    norm = Normalizer(obs_dim, gamma=CFG["normalizer_gamma"], beta=CFG["normalizer_beta"])
+    agent = SACAgent(obs_dim, act_dim, goal_dim, env.action_space.high[0], norm)
+    buf = ReplayBuffer(CFG["buffer_size"], obs_dim, act_dim, goal_dim)
+
+    steps, ret_w, suc_w, ang_w = 0, deque(maxlen=100), deque(maxlen=100), deque(maxlen=100)
+    avg_r_log, step_log, suc_log = [], [], []
+
+    plot_dir = os.path.join(CFG["save_dir"], "episode_plots"); os.makedirs(plot_dir, exist_ok=True)
+
+    # 학습
+    for ep in range(CFG["episode_number"]):
+        obs, info = env.reset(); cur_goal = info["current_goal"]
+        ep_ret = 0.0; ep_len = 0; last_ang = 180.0; final_vel = 0.0
+        com_hist, joint_hist = [], []
+
+        for t in range(CFG["episode_length"]):
+            act = agent.act(obs, cur_goal)
+            nobs, r, _, trunc, inf = env.step(act)
+            done = trunc
+            norm.update(obs); buf.add(obs, act, r, nobs, float(done), cur_goal)
+            c_l, a_l, al_l = agent.update(buf, CFG["batch_size"])
+            ep_ret += r; ep_len += 1
+            last_ang = inf['angle_diff_deg']
+            final_vel = np.linalg.norm(inf['com_vel_3d'][:2])
+            com_hist.append(inf['com_vel_3d'][:2])
+            joint_hist.append(env.data.qvel.copy())
+            obs = nobs; steps += 1
+            if t == 0:
+                model = env.model; data = env.data
+                com_pos, com_vel = env._calculate_com()
+                print(data.qvel, com_vel)
+            if done: break
+
+# ==============================================================================
+# main
+# ==============================================================================
+if __name__ == "__main__":
+    main()

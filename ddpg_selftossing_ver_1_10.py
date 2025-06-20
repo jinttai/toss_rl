@@ -114,10 +114,10 @@ CFG = {
     "goal_dimension": 2,
     "her_replay_k": 4,
     "velocity_reward_weight": 0.1,
-    "angle_release_threshold_deg": 5.0,
-    "success_angle_threshold_deg": 5.0,
+    "angle_release_threshold_deg": 1.0,
+    "success_angle_threshold_deg": 1.0,
     "max_torque": 5.0,
-    "velocity_threshold": 0.5,
+    "velocity_threshold": 0.2,
     "velocity_reward_weight": 50,
 
     # -------- TD3 및 보상 함수 파라미터 --------
